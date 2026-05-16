@@ -1,17 +1,16 @@
-name: Publish
+name: CI
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  npm:
-    name: Publish to npm
+  quality:
+    name: Build, test, and audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
@@ -37,8 +35,5 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Build
-        run: pnpm build
-
-      - name: Publish
-        run: pnpm publish --access public --provenance --no-git-checks
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high

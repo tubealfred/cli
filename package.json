@@ -1,6 +1,6 @@
 {
   "name": "@tubealfred/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TubeAlfred command-line tools for YouTube video, transcript, comments, channel, playlist, and search data.",
   "license": "MIT",
   "type": "module",
@@ -17,7 +17,10 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "prepublishOnly": "pnpm build"
+    "test": "pnpm build && node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "audit": "pnpm audit --audit-level high",
+    "prepublishOnly": "pnpm typecheck && pnpm test"
   },
   "keywords": [
     "youtube",

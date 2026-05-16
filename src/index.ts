@@ -1,11 +1,22 @@
-import { Command } from "commander";
+import { writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+
+import { Command, InvalidArgumentError } from "commander";
 
 const PRODUCT_NAME = "TubeAlfred CLI";
-const PACKAGE_VERSION = "0.1.0";
 const DEFAULT_API_URL = "https://api.tubealfred.com";
+const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRIES = 1;
+const MIN_COUNT = 1;
+const MAX_COUNT = 500;
 
 type HttpMethod = "GET" | "POST";
 type QueryValue = string | number | boolean | undefined;
+type OutputFormat = "json" | "pretty" | "text";
+
+interface PackageMetadata {
+  version?: string;
+}
 
 interface RequestOptions {
   method?: HttpMethod;
@@ -17,7 +28,23 @@ interface RequestOptions {
 interface GlobalOptions {
   apiKey?: string;
   apiUrl?: string;
+  format?: OutputFormat;
   json?: boolean;
+  output?: string;
+  retries?: number;
+  timeout?: number;
+}
+
+function packageVersion(): string {
+  try {
+    const metadata = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as PackageMetadata;
+
+    return metadata.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
 }
 
 function readEnv(name: string): string | undefined {
@@ -31,6 +58,80 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function positiveInteger(value: string, label: string, max = Number.MAX_SAFE_INTEGER): number {
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidArgumentError(`${label} must be a positive integer.`);
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (parsed < 1 || parsed > max) {
+    throw new InvalidArgumentError(`${label} must be between 1 and ${max}.`);
+  }
+
+  return parsed;
+}
+
+function countOption(value: string): number {
+  return positiveInteger(value, "Count", MAX_COUNT);
+}
+
+function retriesOption(value: string): number {
+  return positiveInteger(value, "Retries", 5);
+}
+
+function timeoutOption(value: string): number {
+  const timeout = positiveInteger(value, "Timeout", 300_000);
+
+  if (timeout < 1_000) {
+    throw new InvalidArgumentError("Timeout must be at least 1000 milliseconds.");
+  }
+
+  return timeout;
+}
+
+function validateNonEmpty(value: string, label: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    throw new InvalidArgumentError(`${label} is required.`);
+  }
+
+  return trimmed;
+}
+
+function validateApiKey(apiKey: string): string {
+  const trimmed = validateNonEmpty(apiKey, "API key");
+
+  if (!/^ta_(live|test)_[A-Za-z0-9_-]+$/.test(trimmed)) {
+    throw new InvalidArgumentError(
+      "API key must look like a TubeAlfred key, for example ta_live_... or ta_test_....",
+    );
+  }
+
+  return trimmed;
+}
+
+function validateBaseUrl(value: string): string {
+  const trimmed = validateNonEmpty(value, "API URL");
+
+  try {
+    const url = new URL(trimmed);
+
+    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
+      throw new InvalidArgumentError("API URL must use https unless it points to localhost.");
+    }
+
+    return url.toString().replace(/\/+$/, "");
+  } catch (error) {
+    if (error instanceof InvalidArgumentError) {
+      throw error;
+    }
+
+    throw new InvalidArgumentError("API URL must be a valid URL.");
+  }
+}
+
 function getGlobalOptions(command: Command): Required<GlobalOptions> {
   const options = command.optsWithGlobals<GlobalOptions>();
   const apiKey = options.apiKey ?? readEnv("TUBEALFRED_API_KEY") ?? readEnv("TUBE_ALFRED_API_KEY");
@@ -41,9 +142,13 @@ function getGlobalOptions(command: Command): Required<GlobalOptions> {
   }
 
   return {
-    apiKey,
-    apiUrl: apiUrl.replace(/\/+$/, ""),
+    apiKey: validateApiKey(apiKey),
+    apiUrl: validateBaseUrl(apiUrl),
+    format: options.json ? "json" : options.format ?? "pretty",
     json: options.json ?? false,
+    output: options.output ?? "",
+    retries: options.retries ?? DEFAULT_RETRIES,
+    timeout: options.timeout ?? DEFAULT_TIMEOUT_MS,
   };
 }
 
@@ -55,31 +160,85 @@ function appendQuery(url: URL, query: Record<string, QueryValue> = {}): void {
   }
 }
 
+function isTransientStatus(status: number): boolean {
+  return [408, 429, 500, 502, 503, 504].includes(status);
+}
+
+function isNetworkError(error: unknown): boolean {
+  return error instanceof TypeError || (error instanceof Error && error.name === "AbortError");
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 async function request(command: Command, options: RequestOptions): Promise<unknown> {
   const globals = getGlobalOptions(command);
   const url = new URL(options.path, `${globals.apiUrl}/`);
   appendQuery(url, options.query);
 
-  const response = await fetch(url, {
-    method: options.method ?? "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${globals.apiKey}`,
-      "Content-Type": "application/json",
-      "User-Agent": `tubealfred-cli/${PACKAGE_VERSION} (node ${process.versions.node})`,
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  let lastNetworkError: unknown;
 
-  const text = await response.text();
-  const body = text ? parseJson(text) : null;
+  for (let attempt = 0; attempt <= globals.retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), globals.timeout);
 
-  if (!response.ok) {
-    const detail = typeof body === "object" && body !== null ? JSON.stringify(body, null, 2) : text;
-    fail(`Request failed with HTTP ${response.status}.\n${detail}`);
+    try {
+      const response = await fetch(url, {
+        method: options.method ?? "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${globals.apiKey}`,
+          "Content-Type": "application/json",
+          "User-Agent": `tubealfred-cli/${packageVersion()} (node ${process.versions.node})`,
+        },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller.signal,
+      });
+
+      const text = await response.text();
+      const body = text ? parseJson(text) : null;
+
+      if (response.ok) {
+        return body;
+      }
+
+      if (attempt < globals.retries && isTransientStatus(response.status)) {
+        await delay(250 * (attempt + 1));
+        continue;
+      }
+
+      const detail = typeof body === "object" && body !== null ? JSON.stringify(body, null, 2) : text;
+      fail(`Request failed with HTTP ${response.status}.\n${detail}`);
+    } catch (error) {
+      lastNetworkError = error;
+
+      if (attempt < globals.retries && isNetworkError(error)) {
+        await delay(250 * (attempt + 1));
+        continue;
+      }
+
+      fail(networkErrorMessage(error, globals.timeout));
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  return body;
+  fail(networkErrorMessage(lastNetworkError, globals.timeout));
+}
+
+function networkErrorMessage(error: unknown, timeoutMs: number): string {
+  if (error instanceof Error && error.name === "AbortError") {
+    return `Request timed out after ${timeoutMs}ms. Try again or increase --timeout.`;
+  }
+
+  if (error instanceof Error) {
+    return `Network request failed: ${error.message}`;
+  }
+
+  return "Network request failed.";
 }
 
 function parseJson(text: string): unknown {
@@ -90,8 +249,12 @@ function parseJson(text: string): unknown {
   }
 }
 
-function printJson(value: unknown, compact = false): void {
-  process.stdout.write(`${JSON.stringify(value, null, compact ? 0 : 2)}\n`);
+function stringifyJson(value: unknown, compact = false): string {
+  if (value === undefined) {
+    return "";
+  }
+
+  return `${JSON.stringify(value, null, compact ? 0 : 2)}\n`;
 }
 
 function unwrapData(value: unknown): unknown {
@@ -132,171 +295,231 @@ function extractTranscriptText(value: unknown): string | null {
         .join("\n");
     }
 
+    const segments = record.segments;
+    if (Array.isArray(segments)) {
+      return segments
+        .map((segment) => {
+          if (typeof segment === "object" && segment !== null && "text" in segment) {
+            const text = (segment as { text?: unknown }).text;
+
+            return typeof text === "string" ? text : "";
+          }
+
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+
     const text = record.text;
     if (typeof text === "string") {
       return text;
     }
   }
 
-  return null;
+  return typeof data === "string" ? data : null;
 }
 
-function addContinuationOptions(command: Command): Command {
-  return command.option("--continuation-token <token>", "pagination continuation token");
-}
-
-function output(command: Command, value: unknown, options: { transcriptText?: boolean } = {}): void {
+async function writeOutput(command: Command, content: string): Promise<void> {
   const globals = getGlobalOptions(command);
 
-  if (options.transcriptText && !globals.json) {
+  if (globals.output) {
+    await writeFile(globals.output, content, "utf8");
+    return;
+  }
+
+  process.stdout.write(content);
+}
+
+async function output(
+  command: Command,
+  value: unknown,
+  options: { defaultFormat?: OutputFormat; transcriptText?: boolean } = {},
+): Promise<void> {
+  const globals = getGlobalOptions(command);
+  const format = globals.format === "pretty" && options.defaultFormat ? options.defaultFormat : globals.format;
+
+  if (format === "text" || options.transcriptText) {
     const text = extractTranscriptText(value);
 
     if (text) {
-      process.stdout.write(`${text}\n`);
+      await writeOutput(command, `${text}\n`);
       return;
+    }
+
+    if (format === "text") {
+      fail("Text output is not available for this response. Use --format pretty or --format json.");
     }
   }
 
-  printJson(value, globals.json);
+  await writeOutput(command, stringifyJson(value, format === "json"));
+}
+
+function addContinuationOptions(command: Command): Command {
+  return command.option("--continuation-token <token>", "pagination continuation token", (value) =>
+    validateNonEmpty(value, "Continuation token"),
+  );
+}
+
+function addCountOption(command: Command): Command {
+  return command.option("--count <count>", `number of items to fetch (${MIN_COUNT}-${MAX_COUNT})`, countOption);
 }
 
 const program = new Command()
   .name("tubealfred")
   .description("TubeAlfred command-line tools for YouTube data.")
-  .version(PACKAGE_VERSION)
-  .option("--api-key <key>", "TubeAlfred API key. Defaults to TUBEALFRED_API_KEY.")
+  .version(packageVersion())
+  .option("--api-key <key>", "TubeAlfred API key. Prefer TUBEALFRED_API_KEY for shell safety.")
   .option("--api-url <url>", "TubeAlfred API base URL.", DEFAULT_API_URL)
-  .option("--json", "print compact JSON");
+  .option("--format <format>", "output format: pretty, json, or text", (value) => {
+    if (!["pretty", "json", "text"].includes(value)) {
+      throw new InvalidArgumentError("Format must be one of: pretty, json, text.");
+    }
+
+    return value as OutputFormat;
+  })
+  .option("--json", "print compact JSON; equivalent to --format json")
+  .option("--output <file>", "write output to a file instead of stdout")
+  .option("--retries <count>", "retry transient network/API failures", retriesOption, DEFAULT_RETRIES)
+  .option("--timeout <ms>", "request timeout in milliseconds", timeoutOption, DEFAULT_TIMEOUT_MS);
 
 program
   .command("video")
-  .argument("<video_id>", "YouTube video ID")
+  .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
   .description("Fetch YouTube video details.")
   .action(async (videoId: string, _options: unknown, command: Command) => {
     const value = await request(command, {
-      path: `/api/v1/youtube/video/${encodeURIComponent(videoId)}`,
+      path: `/v1/youtube/video/${encodeURIComponent(videoId)}`,
     });
-    output(command, value);
+    await output(command, value);
   });
 
 program
   .command("transcript")
-  .argument("<video_id>", "YouTube video ID")
+  .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
   .description("Fetch a YouTube video transcript.")
   .action(async (videoId: string, _options: unknown, command: Command) => {
     const value = await request(command, {
-      path: `/api/v1/youtube/video/${encodeURIComponent(videoId)}/transcript/fast`,
+      path: `/v1/youtube/video/${encodeURIComponent(videoId)}/transcript/fast`,
     });
-    output(command, value, { transcriptText: true });
+    await output(command, value, { defaultFormat: "text", transcriptText: true });
   });
 
-program
-  .command("comments")
-  .argument("<video_id>", "YouTube video ID")
-  .description("Fetch the first comments page for a video.")
-  .option("--count <count>", "number of comments to fetch", parseInt)
-  .action(async (videoId: string, options: { count?: number }, command: Command) => {
-    const value = await request(command, {
-      path: `/api/v1/youtube/video/${encodeURIComponent(videoId)}/comments`,
-      query: { count: options.count },
-    });
-    output(command, value);
+addCountOption(
+  program
+    .command("comments")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .description("Fetch the first comments page for a video."),
+).action(async (videoId: string, options: { count?: number }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/video/${encodeURIComponent(videoId)}/comments`,
+    query: { count: options.count },
   });
+  await output(command, value);
+});
 
-program
-  .command("comments-page")
-  .argument("<video_id>", "YouTube video ID")
-  .requiredOption("--continuation-token <token>", "pagination continuation token")
-  .option("--count <count>", "number of comments to fetch", parseInt)
-  .description("Fetch a subsequent comments page.")
-  .action(async (videoId: string, options: { continuationToken: string; count?: number }, command: Command) => {
+addCountOption(
+  program
+    .command("comments-page")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .requiredOption("--continuation-token <token>", "pagination continuation token", (value) =>
+      validateNonEmpty(value, "Continuation token"),
+    )
+    .description("Fetch a subsequent comments page."),
+).action(
+  async (videoId: string, options: { continuationToken: string; count?: number }, command: Command) => {
     const value = await request(command, {
       method: "POST",
-      path: `/api/v1/youtube/video/${encodeURIComponent(videoId)}/comments/page`,
+      path: `/v1/youtube/video/${encodeURIComponent(videoId)}/comments/page`,
       body: {
         continuation_token: options.continuationToken,
         count: options.count,
       },
     });
-    output(command, value);
-  });
+    await output(command, value);
+  },
+);
 
 program
   .command("channel")
-  .argument("<channel_id>", "UC channel ID, @handle, or username")
+  .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+    validateNonEmpty(value, "Channel ID"),
+  )
   .description("Fetch YouTube channel details.")
   .action(async (channelId: string, _options: unknown, command: Command) => {
     const value = await request(command, {
-      path: `/api/v1/youtube/channel/${encodeURIComponent(channelId)}`,
+      path: `/v1/youtube/channel/${encodeURIComponent(channelId)}`,
     });
-    output(command, value);
+    await output(command, value);
   });
 
 addContinuationOptions(
   program
     .command("channel-videos")
-    .argument("<channel_id>", "UC channel ID, @handle, or username")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
     .description("Fetch latest videos for a channel."),
 ).action(async (channelId: string, options: { continuationToken?: string }, command: Command) => {
   const value = await request(command, {
-    path: `/api/v1/youtube/channel/${encodeURIComponent(channelId)}/videos`,
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/videos`,
     query: { continuation_token: options.continuationToken },
   });
-  output(command, value);
+  await output(command, value);
 });
 
 addContinuationOptions(
   program
     .command("search")
-    .argument("<query>", "search query")
+    .argument("<query>", "search query", (value) => validateNonEmpty(value, "Search query"))
     .description("Search YouTube."),
 ).action(async (query: string, options: { continuationToken?: string }, command: Command) => {
   const value = await request(command, {
-    path: "/api/v1/youtube/search/",
+    path: "/v1/youtube/search/",
     query: {
       query,
       continuation_token: options.continuationToken,
     },
   });
-  output(command, value);
+  await output(command, value);
 });
 
 program
   .command("suggestions")
-  .argument("<query>", "partial search query")
+  .argument("<query>", "partial search query", (value) => validateNonEmpty(value, "Search query"))
   .description("Fetch YouTube search suggestions.")
-  .option("--prev <query>", "previous query context")
+  .option("--prev <query>", "previous query context", (value) => validateNonEmpty(value, "Previous query"))
   .action(async (query: string, options: { prev?: string }, command: Command) => {
     const value = await request(command, {
-      path: "/api/v1/youtube/search/suggestions",
+      path: "/v1/youtube/search/suggestions",
       query: { q: query, prev: options.prev },
     });
-    output(command, value);
+    await output(command, value);
   });
 
 addContinuationOptions(
   program
     .command("playlist")
-    .argument("<playlist_id>", "YouTube playlist ID")
+    .argument("<playlist_id>", "YouTube playlist ID", (value) => validateNonEmpty(value, "Playlist ID"))
     .description("Fetch playlist contents."),
 ).action(async (playlistId: string, options: { continuationToken?: string }, command: Command) => {
   const value = await request(command, {
-    path: `/api/v1/youtube/playlist/${encodeURIComponent(playlistId)}`,
+    path: `/v1/youtube/playlist/${encodeURIComponent(playlistId)}`,
     query: { continuation_token: options.continuationToken },
   });
-  output(command, value);
+  await output(command, value);
 });
 
 program
   .command("resolve")
-  .argument("<url>", "YouTube URL")
+  .argument("<url>", "YouTube URL", (value) => validateNonEmpty(value, "YouTube URL"))
   .description("Resolve a YouTube URL into canonical identifiers.")
   .action(async (url: string, _options: unknown, command: Command) => {
     const value = await request(command, {
-      path: "/api/v1/youtube/resolve",
+      path: "/v1/youtube/resolve",
       query: { url },
     });
-    output(command, value);
+    await output(command, value);
   });
 
 program.parseAsync().catch((error: unknown) => {
