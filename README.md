@@ -65,11 +65,19 @@ tubealfred video VIDEO_ID
 tubealfred transcript VIDEO_ID
 tubealfred comments VIDEO_ID --count 100
 tubealfred comments-page VIDEO_ID --continuation-token TOKEN --count 100
+tubealfred replies VIDEO_ID COMMENT_ID --count 100
+tubealfred replies-page VIDEO_ID COMMENT_ID --continuation-token TOKEN --count 100
 tubealfred channel CHANNEL_ID_OR_HANDLE
+tubealfred channel-about CHANNEL_ID_OR_HANDLE
 tubealfred channel-videos CHANNEL_ID_OR_HANDLE
+tubealfred channel-shorts CHANNEL_ID_OR_HANDLE
+tubealfred channel-playlists CHANNEL_ID_OR_HANDLE
+tubealfred channel-community CHANNEL_ID_OR_HANDLE
 tubealfred search "laravel queues"
+tubealfred hashtag "#laravel"
 tubealfred suggestions "laravel"
 tubealfred playlist PLAYLIST_ID
+tubealfred resolve "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```
 
 ## Output
@@ -111,12 +119,16 @@ Some commands return a continuation token when more results are available. Pass 
 ```bash
 tubealfred comments VIDEO_ID --count 100
 tubealfred comments-page VIDEO_ID --continuation-token TOKEN --count 100
+tubealfred replies VIDEO_ID COMMENT_ID --count 100
+tubealfred replies-page VIDEO_ID COMMENT_ID --continuation-token TOKEN --count 100
 ```
 
-Channel, playlist, and search pagination use the same `--continuation-token` option:
+Channel, playlist, search, hashtag, Shorts, playlists, and community pagination use the same `--continuation-token` option:
 
 ```bash
 tubealfred search "creator economy" --continuation-token TOKEN
+tubealfred hashtag "#creator" --continuation-token TOKEN
+tubealfred channel-shorts @mkbhd --continuation-token TOKEN
 ```
 
 ## CI Usage

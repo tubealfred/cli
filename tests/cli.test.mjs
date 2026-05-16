@@ -70,6 +70,9 @@ test("prints command help", async () => {
   assert.equal(result.code, 0);
   assert.match(result.stdout, /Usage: tubealfred/);
   assert.match(result.stdout, /video <video_id>/);
+  assert.match(result.stdout, /channel-shorts \[options\] <channel_id>/);
+  assert.match(result.stdout, /hashtag \[options\] <hashtag>/);
+  assert.match(result.stdout, /resolve <url>/);
 });
 
 test("uses /v1 API paths without duplicating /api", async () => {
@@ -86,6 +89,44 @@ test("uses /v1 API paths without duplicating /api", async () => {
     assert.equal(result.code, 0);
     assert.deepEqual(JSON.parse(result.stdout), { data: { id: "abc123", title: "Demo" } });
     assert.deepEqual(seenPaths, ["/v1/youtube/video/abc123"]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("supports new channel, hashtag, replies, and resolve API paths", async () => {
+  const seenPaths = [];
+  const server = await startServer((request, response) => {
+    seenPaths.push(request.url ?? "");
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ data: { ok: true } }));
+  });
+
+  try {
+    const commands = [
+      ["--api-url", server.url, "channel-about", "@mkbhd"],
+      ["--api-url", server.url, "channel-shorts", "@mkbhd", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "channel-playlists", "@mkbhd"],
+      ["--api-url", server.url, "channel-community", "@mkbhd"],
+      ["--api-url", server.url, "hashtag", "#laravel", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "replies", "video123", "comment123", "--count", "25"],
+      ["--api-url", server.url, "resolve", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+    ];
+
+    for (const args of commands) {
+      const result = await runCli(args);
+      assert.equal(result.code, 0, result.stderr);
+    }
+
+    assert.deepEqual(seenPaths, [
+      "/v1/youtube/channel/%40mkbhd/about",
+      "/v1/youtube/channel/%40mkbhd/shorts?continuation_token=NEXT",
+      "/v1/youtube/channel/%40mkbhd/playlists",
+      "/v1/youtube/channel/%40mkbhd/community",
+      "/v1/youtube/search/hashtag?hashtag=%23laravel&continuation_token=NEXT",
+      "/v1/youtube/video/video123/comments/comment123/replies?count=25",
+      "/v1/youtube/utility/resolve?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ",
+    ]);
   } finally {
     await server.close();
   }

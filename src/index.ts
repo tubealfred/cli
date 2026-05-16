@@ -440,6 +440,52 @@ addCountOption(
   },
 );
 
+addCountOption(
+  program
+    .command("replies")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .argument("<comment_id>", "top-level YouTube comment ID", (value) =>
+      validateNonEmpty(value, "Comment ID"),
+    )
+    .description("Fetch the first replies page for a top-level comment."),
+).action(async (videoId: string, commentId: string, options: { count?: number }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/video/${encodeURIComponent(videoId)}/comments/${encodeURIComponent(commentId)}/replies`,
+    query: { count: options.count },
+  });
+  await output(command, value);
+});
+
+addCountOption(
+  program
+    .command("replies-page")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .argument("<comment_id>", "top-level YouTube comment ID", (value) =>
+      validateNonEmpty(value, "Comment ID"),
+    )
+    .requiredOption("--continuation-token <token>", "pagination continuation token", (value) =>
+      validateNonEmpty(value, "Continuation token"),
+    )
+    .description("Fetch a subsequent replies page for a top-level comment."),
+).action(
+  async (
+    videoId: string,
+    commentId: string,
+    options: { continuationToken: string; count?: number },
+    command: Command,
+  ) => {
+    const value = await request(command, {
+      method: "POST",
+      path: `/v1/youtube/video/${encodeURIComponent(videoId)}/comments/${encodeURIComponent(commentId)}/replies/page`,
+      body: {
+        continuation_token: options.continuationToken,
+        count: options.count,
+      },
+    });
+    await output(command, value);
+  },
+);
+
 program
   .command("channel")
   .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
@@ -449,6 +495,19 @@ program
   .action(async (channelId: string, _options: unknown, command: Command) => {
     const value = await request(command, {
       path: `/v1/youtube/channel/${encodeURIComponent(channelId)}`,
+    });
+  await output(command, value);
+});
+
+program
+  .command("channel-about")
+  .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+    validateNonEmpty(value, "Channel ID"),
+  )
+  .description("Fetch a channel about section.")
+  .action(async (channelId: string, _options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/about`,
     });
     await output(command, value);
   });
@@ -470,6 +529,51 @@ addContinuationOptions(
 
 addContinuationOptions(
   program
+    .command("channel-shorts")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch latest Shorts for a channel."),
+).action(async (channelId: string, options: { continuationToken?: string }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/shorts`,
+    query: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addContinuationOptions(
+  program
+    .command("channel-playlists")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch published playlists for a channel."),
+).action(async (channelId: string, options: { continuationToken?: string }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/playlists`,
+    query: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addContinuationOptions(
+  program
+    .command("channel-community")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch community posts for a channel."),
+).action(async (channelId: string, options: { continuationToken?: string }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/community`,
+    query: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addContinuationOptions(
+  program
     .command("search")
     .argument("<query>", "search query", (value) => validateNonEmpty(value, "Search query"))
     .description("Search YouTube."),
@@ -478,6 +582,24 @@ addContinuationOptions(
     path: "/v1/youtube/search/",
     query: {
       query,
+      continuation_token: options.continuationToken,
+    },
+  });
+  await output(command, value);
+});
+
+addContinuationOptions(
+  program
+    .command("hashtag")
+    .argument("<hashtag>", "YouTube hashtag, with or without #", (value) =>
+      validateNonEmpty(value, "Hashtag"),
+    )
+    .description("Search YouTube by hashtag."),
+).action(async (hashtag: string, options: { continuationToken?: string }, command: Command) => {
+  const value = await request(command, {
+    path: "/v1/youtube/search/hashtag",
+    query: {
+      hashtag,
       continuation_token: options.continuationToken,
     },
   });
@@ -493,6 +615,18 @@ program
     const value = await request(command, {
       path: "/v1/youtube/search/suggestions",
       query: { q: query, prev: options.prev },
+    });
+  await output(command, value);
+});
+
+program
+  .command("resolve")
+  .argument("<url>", "YouTube URL", (value) => validateNonEmpty(value, "YouTube URL"))
+  .description("Resolve a YouTube URL into canonical identifiers.")
+  .action(async (url: string, _options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: "/v1/youtube/utility/resolve",
+      query: { url },
     });
     await output(command, value);
   });
