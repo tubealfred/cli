@@ -70,7 +70,6 @@ tubealfred channel-videos CHANNEL_ID_OR_HANDLE
 tubealfred search "laravel queues"
 tubealfred suggestions "laravel"
 tubealfred playlist PLAYLIST_ID
-tubealfred resolve "https://www.youtube.com/watch?v=..."
 ```
 
 ## Output

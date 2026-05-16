@@ -1,6 +1,6 @@
 {
   "name": "@tubealfred/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "TubeAlfred command-line tools for YouTube video, transcript, comments, channel, playlist, and search data.",
   "license": "MIT",
   "type": "module",

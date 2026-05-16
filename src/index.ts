@@ -510,18 +510,6 @@ addContinuationOptions(
   await output(command, value);
 });
 
-program
-  .command("resolve")
-  .argument("<url>", "YouTube URL", (value) => validateNonEmpty(value, "YouTube URL"))
-  .description("Resolve a YouTube URL into canonical identifiers.")
-  .action(async (url: string, _options: unknown, command: Command) => {
-    const value = await request(command, {
-      path: "/v1/youtube/resolve",
-      query: { url },
-    });
-    await output(command, value);
-  });
-
 program.parseAsync().catch((error: unknown) => {
   fail(error instanceof Error ? error.message : String(error));
 });
