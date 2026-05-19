@@ -2,6 +2,22 @@
 
 Command-line access to the [TubeAlfred YouTube API](https://tubealfred.com/docs).
 
+Use it to fetch YouTube video, transcript, comment, reply, channel, Shorts, playlist, community, search, hashtag, suggestion, and URL resolution data from your terminal through your TubeAlfred account.
+
+## Requirements
+
+- Node.js 18 or newer.
+- A TubeAlfred account.
+- A TubeAlfred API key with the `youtube.read` scope.
+
+Create an API key in TubeAlfred:
+
+```text
+https://tubealfred.com/app/api-keys
+```
+
+Choose **Create key**, select the `youtube.read` scope, then copy the key immediately. TubeAlfred only shows the full key once.
+
 ## Install
 
 Run on demand:
@@ -18,7 +34,7 @@ npm install -g @tubealfred/cli
 
 ## Authentication
 
-Prefer an environment variable so your API key does not appear in shell history:
+Set the API key you created at `https://tubealfred.com/app/api-keys`. Prefer an environment variable so your API key does not appear in shell history:
 
 ```bash
 export TUBEALFRED_API_KEY=ta_live_...
@@ -133,7 +149,7 @@ tubealfred channel-shorts @mkbhd --continuation-token TOKEN
 
 ## CI Usage
 
-Set `TUBEALFRED_API_KEY` in your CI secret store, then call the CLI normally:
+Create a TubeAlfred API key at `https://tubealfred.com/app/api-keys`, then set `TUBEALFRED_API_KEY` in your CI secret store and call the CLI normally:
 
 ```bash
 npx -y @tubealfred/cli --format json video VIDEO_ID
