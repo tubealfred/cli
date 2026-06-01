@@ -90,11 +90,27 @@ tubealfred channel-shorts CHANNEL_ID_OR_HANDLE
 tubealfred channel-playlists CHANNEL_ID_OR_HANDLE
 tubealfred channel-community CHANNEL_ID_OR_HANDLE
 tubealfred search "laravel queues"
+tubealfred search "laravel queues" --upload-date month --duration three_to_twenty_mins --sort popularity --type video
+tubealfred search "live coding" --live
 tubealfred hashtag "#laravel"
 tubealfred suggestions "laravel"
 tubealfred playlist PLAYLIST_ID
 tubealfred resolve "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```
+
+## Search filters
+
+`tubealfred search` accepts optional filters:
+
+- `--upload-date <value>` — `all`, `today`, `week`, `month`, `year`
+- `--duration <value>` — `all`, `under_three_mins`, `three_to_twenty_mins`, `over_twenty_mins`
+- `--sort <value>` — `relevance`, `popularity`
+- `--type <value>` — `all`, `video`, `shorts`, `channel`, `playlist`, `movie`
+- `--features <list>` — comma-separated: `hd`, `subtitles`, `creative_commons`, `3d`, `live`, `purchased`, `4k`, `360`, `location`, `hdr`, `vr180`
+- `--live` — shortcut for `--features live`
+- `--shorts` — shortcut for `--type shorts`
+
+Each search result's `description` is YouTube's truncated snippet. Use `tubealfred video VIDEO_ID` for a result's full description.
 
 ## Output
 

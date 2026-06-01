@@ -361,6 +361,46 @@ function addContinuationOptions(command: Command): Command {
   );
 }
 
+function oneOf(label: string, allowed: readonly string[]): (value: string) => string {
+  return (value: string): string => {
+    if (!allowed.includes(value)) {
+      throw new InvalidArgumentError(`${label} must be one of: ${allowed.join(", ")}.`);
+    }
+    return value;
+  };
+}
+
+function addSearchFilterOptions(command: Command): Command {
+  return command
+    .option(
+      "--upload-date <value>",
+      "filter by upload date (all, today, week, month, year)",
+      oneOf("Upload date", ["all", "today", "week", "month", "year"]),
+    )
+    .option(
+      "--duration <value>",
+      "filter by duration (all, under_three_mins, three_to_twenty_mins, over_twenty_mins)",
+      oneOf("Duration", ["all", "under_three_mins", "three_to_twenty_mins", "over_twenty_mins"]),
+    )
+    .option(
+      "--sort <value>",
+      "ranking preference (relevance, popularity)",
+      oneOf("Sort", ["relevance", "popularity"]),
+    )
+    .option(
+      "--type <value>",
+      "result type (all, video, shorts, channel, playlist, movie)",
+      oneOf("Type", ["all", "video", "shorts", "channel", "playlist", "movie"]),
+    )
+    .option(
+      "--features <list>",
+      "comma-separated features (hd, subtitles, creative_commons, 3d, live, purchased, 4k, 360, location, hdr, vr180)",
+      (value) => validateNonEmpty(value, "Features"),
+    )
+    .option("--live", "shortcut for features=live")
+    .option("--shorts", "shortcut for type=shorts");
+}
+
 function addCountOption(command: Command): Command {
   return command.option("--count <count>", `number of items to fetch (${MIN_COUNT}-${MAX_COUNT})`, countOption);
 }
@@ -572,21 +612,45 @@ addContinuationOptions(
   await output(command, value);
 });
 
-addContinuationOptions(
-  program
-    .command("search")
-    .argument("<query>", "search query", (value) => validateNonEmpty(value, "Search query"))
-    .description("Search YouTube."),
-).action(async (query: string, options: { continuationToken?: string }, command: Command) => {
-  const value = await request(command, {
-    path: "/v1/youtube/search/",
-    query: {
-      query,
-      continuation_token: options.continuationToken,
+addSearchFilterOptions(
+  addContinuationOptions(
+    program
+      .command("search")
+      .argument("<query>", "search query", (value) => validateNonEmpty(value, "Search query"))
+      .description("Search YouTube."),
+  ),
+).action(
+  async (
+    query: string,
+    options: {
+      continuationToken?: string;
+      uploadDate?: string;
+      duration?: string;
+      sort?: string;
+      type?: string;
+      features?: string;
+      live?: boolean;
+      shorts?: boolean;
     },
-  });
-  await output(command, value);
-});
+    command: Command,
+  ) => {
+    const value = await request(command, {
+      path: "/v1/youtube/search/",
+      query: {
+        query,
+        continuation_token: options.continuationToken,
+        upload_date: options.uploadDate,
+        duration: options.duration,
+        sort: options.sort,
+        type: options.type,
+        features: options.features,
+        live: options.live,
+        shorts: options.shorts,
+      },
+    });
+    await output(command, value);
+  },
+);
 
 addContinuationOptions(
   program

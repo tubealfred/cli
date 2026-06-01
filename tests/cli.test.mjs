@@ -132,6 +132,56 @@ test("supports new channel, hashtag, replies, and resolve API paths", async () =
   }
 });
 
+test("forwards search filters and boolean flags", async () => {
+  let seenUrl = "";
+  const server = await startServer((request, response) => {
+    seenUrl = request.url ?? "";
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ data: { ok: true } }));
+  });
+
+  try {
+    const result = await runCli([
+      "--api-url",
+      server.url,
+      "search",
+      "laravel tutorial",
+      "--upload-date",
+      "month",
+      "--duration",
+      "three_to_twenty_mins",
+      "--sort",
+      "popularity",
+      "--type",
+      "video",
+      "--features",
+      "hd,subtitles",
+      "--live",
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+
+    const parsed = new URL(seenUrl, "http://localhost");
+    assert.equal(parsed.pathname, "/v1/youtube/search/");
+    assert.equal(parsed.searchParams.get("query"), "laravel tutorial");
+    assert.equal(parsed.searchParams.get("upload_date"), "month");
+    assert.equal(parsed.searchParams.get("duration"), "three_to_twenty_mins");
+    assert.equal(parsed.searchParams.get("sort"), "popularity");
+    assert.equal(parsed.searchParams.get("type"), "video");
+    assert.equal(parsed.searchParams.get("features"), "hd,subtitles");
+    assert.equal(parsed.searchParams.get("live"), "true");
+    assert.equal(parsed.searchParams.get("shorts"), null);
+  } finally {
+    await server.close();
+  }
+});
+
+test("rejects invalid search filter values", async () => {
+  const result = await runCli(["search", "laravel", "--upload-date", "decade"]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /Upload date must be one of/);
+});
+
 test("validates count input", async () => {
   const result = await runCli(["comments", "abc123", "--count", "abc"]);
 
