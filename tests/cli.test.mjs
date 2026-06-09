@@ -73,6 +73,7 @@ test("prints command help", async () => {
   assert.match(result.stdout, /channel-shorts \[options\] <channel_id>/);
   assert.match(result.stdout, /hashtag \[options\] <hashtag>/);
   assert.match(result.stdout, /resolve <url>/);
+  assert.match(result.stdout, /billing-usage/);
 });
 
 test("uses /v1 API paths without duplicating /api", async () => {
@@ -127,6 +128,97 @@ test("supports new channel, hashtag, replies, and resolve API paths", async () =
       "/v1/youtube/video/video123/comments/comment123/replies?count=25",
       "/v1/youtube/utility/resolve?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ",
     ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("supports newly documented page, related, batch, utility, and trending paths", async () => {
+  const seen = [];
+  const server = await startServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString("utf8");
+    });
+    request.on("end", () => {
+      seen.push({ body: body ? JSON.parse(body) : null, method: request.method, url: request.url ?? "" });
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ data: { ok: true } }));
+    });
+  });
+
+  try {
+    const commands = [
+      ["--api-url", server.url, "video-enhanced", "abc123", "--fields", "id,title"],
+      ["--api-url", server.url, "--format", "json", "transcript-full", "abc123", "--language", "en", "--kind", "manual"],
+      ["--api-url", server.url, "related", "abc123", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "related-page", "abc123", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "channel-videos-page", "@mkbhd", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "channel-streams", "@mkbhd"],
+      ["--api-url", server.url, "channel-streams-page", "@mkbhd", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "channel-shorts-page", "@mkbhd", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "channel-playlists-page", "@mkbhd", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "channel-community-page", "@mkbhd", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "search-page", "laravel", "--continuation-token", "NEXT", "--channel-id", "@tubealfred"],
+      ["--api-url", server.url, "hashtag-page", "#laravel", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "playlist-metadata", "PL123"],
+      ["--api-url", server.url, "playlist-page", "PL123", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "videos-batch", "dQw4w9WgXcQ", "--fields", "id,title"],
+      ["--api-url", server.url, "channels-batch", "@mkbhd"],
+      ["--api-url", server.url, "trending"],
+      ["--api-url", server.url, "trending-shorts"],
+    ];
+
+    for (const args of commands) {
+      const result = await runCli(args);
+      assert.equal(result.code, 0, result.stderr);
+    }
+
+    assert.deepEqual(
+      seen.map((entry) => `${entry.method} ${entry.url}`),
+      [
+        "GET /v1/youtube/video/abc123/enhanced?fields=id%2Ctitle",
+        "GET /v1/youtube/video/abc123/transcript?language=en&kind=manual",
+        "GET /v1/youtube/video/abc123/related?continuation_token=NEXT",
+        "POST /v1/youtube/video/abc123/related/page",
+        "POST /v1/youtube/channel/%40mkbhd/videos/page",
+        "GET /v1/youtube/channel/%40mkbhd/streams",
+        "POST /v1/youtube/channel/%40mkbhd/streams/page",
+        "POST /v1/youtube/channel/%40mkbhd/shorts/page",
+        "POST /v1/youtube/channel/%40mkbhd/playlists/page",
+        "POST /v1/youtube/channel/%40mkbhd/community/page",
+        "POST /v1/youtube/search/page",
+        "POST /v1/youtube/search/hashtag/page",
+        "GET /v1/youtube/playlist/PL123/metadata",
+        "POST /v1/youtube/playlist/PL123/page",
+        "POST /v1/youtube/videos:batch?fields=id%2Ctitle",
+        "POST /v1/youtube/channels:batch",
+        "GET /v1/youtube/trending",
+        "GET /v1/youtube/trending/shorts",
+      ],
+    );
+    assert.deepEqual(seen[3].body, { continuation_token: "NEXT" });
+    assert.deepEqual(seen[10].body, { query: "laravel", continuation_token: "NEXT", channel_id: "@tubealfred" });
+    assert.deepEqual(seen[14].body, { ids: ["dQw4w9WgXcQ"] });
+  } finally {
+    await server.close();
+  }
+});
+
+test("supports billing usage API path", async () => {
+  const seenPaths = [];
+  const server = await startServer((request, response) => {
+    seenPaths.push(`${request.method} ${request.url ?? ""}`);
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ data: { balance: 430 } }));
+  });
+
+  try {
+    const result = await runCli(["--api-url", server.url, "billing-usage"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { data: { balance: 430 } });
+    assert.deepEqual(seenPaths, ["GET /v1/billing/usage"]);
   } finally {
     await server.close();
   }

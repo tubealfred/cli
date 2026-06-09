@@ -1,14 +1,14 @@
 # @tubealfred/cli
 
-Command-line access to the [TubeAlfred YouTube API](https://tubealfred.com/docs).
+Command-line access to the [TubeAlfred API](https://tubealfred.com/docs).
 
-Use it to fetch YouTube video, transcript, comment, reply, channel, Shorts, playlist, community, search, hashtag, suggestion, and URL resolution data from your terminal through your TubeAlfred account.
+Use it to fetch YouTube video, transcript, comment, reply, channel, Shorts, playlist, community, search, hashtag, suggestion, and URL resolution data, plus account billing usage, from your terminal through your TubeAlfred account.
 
 ## Requirements
 
 - Node.js 18 or newer.
 - A TubeAlfred account.
-- A TubeAlfred API key with the `youtube.read` scope.
+- A TubeAlfred API key with `youtube.read` for YouTube commands and `billing.read` for billing usage.
 
 Create an API key in TubeAlfred:
 
@@ -16,7 +16,7 @@ Create an API key in TubeAlfred:
 https://tubealfred.com/app/api-keys
 ```
 
-Choose **Create key**, select the `youtube.read` scope, then copy the key immediately. TubeAlfred only shows the full key once.
+Choose **Create key**, select the scopes you need, then copy the key immediately. TubeAlfred only shows the full key once.
 
 ## Install
 
@@ -96,6 +96,7 @@ tubealfred hashtag "#laravel"
 tubealfred suggestions "laravel"
 tubealfred playlist PLAYLIST_ID
 tubealfred resolve "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+tubealfred billing-usage
 ```
 
 ## Search filters

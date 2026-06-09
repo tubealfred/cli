@@ -1,7 +1,7 @@
 {
   "name": "@tubealfred/cli",
   "version": "0.1.5",
-  "description": "TubeAlfred command-line tools for YouTube video, transcript, comments, replies, channel, Shorts, playlist, community, hashtag, suggestion, and search data.",
+  "description": "TubeAlfred command-line tools for YouTube data and account billing usage.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.12.1",

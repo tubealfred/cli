@@ -8,7 +8,7 @@ const DEFAULT_API_URL = "https://api.tubealfred.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 1;
 const MIN_COUNT = 1;
-const MAX_COUNT = 500;
+const MAX_COUNT = 100;
 
 type HttpMethod = "GET" | "POST";
 type QueryValue = string | number | boolean | undefined;
@@ -361,6 +361,26 @@ function addContinuationOptions(command: Command): Command {
   );
 }
 
+function addRequiredContinuationOption(command: Command): Command {
+  return command.requiredOption("--continuation-token <token>", "pagination continuation token", (value) =>
+    validateNonEmpty(value, "Continuation token"),
+  );
+}
+
+function addFieldsOption(command: Command): Command {
+  return command.option("--fields <fields>", "comma-separated response fields", (value) =>
+    validateNonEmpty(value, "Fields"),
+  );
+}
+
+function addTranscriptOptions(command: Command): Command {
+  return command
+    .option("--language <code>", "preferred caption language code", (value) =>
+      validateNonEmpty(value, "Language"),
+    )
+    .option("--kind <kind>", "caption track kind (manual, auto, any)", oneOf("Caption kind", ["manual", "auto", "any"]));
+}
+
 function oneOf(label: string, allowed: readonly string[]): (value: string) => string {
   return (value: string): string => {
     if (!allowed.includes(value)) {
@@ -372,6 +392,9 @@ function oneOf(label: string, allowed: readonly string[]): (value: string) => st
 
 function addSearchFilterOptions(command: Command): Command {
   return command
+    .option("--channel-id <channel_id>", "restrict search to a channel ID, handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
     .option(
       "--upload-date <value>",
       "filter by upload date (all, today, week, month, year)",
@@ -405,9 +428,17 @@ function addCountOption(command: Command): Command {
   return command.option("--count <count>", `number of items to fetch (${MIN_COUNT}-${MAX_COUNT})`, countOption);
 }
 
+function addCommentSortOption(command: Command): Command {
+  return command.option("--sort <value>", "comment sort order (top, newest)", oneOf("Sort", ["top", "newest"]));
+}
+
+function validateIds(values: string[], label: string): string[] {
+  return values.map((value) => validateNonEmpty(value, label));
+}
+
 const program = new Command()
   .name("tubealfred")
-  .description("TubeAlfred command-line tools for YouTube data.")
+  .description("TubeAlfred command-line tools for YouTube data and account usage.")
   .version(packageVersion())
   .option("--api-key <key>", "TubeAlfred API key. Prefer TUBEALFRED_API_KEY for shell safety.")
   .option("--api-url <url>", "TubeAlfred API base URL.", DEFAULT_API_URL)
@@ -434,26 +465,88 @@ program
     await output(command, value);
   });
 
-program
-  .command("transcript")
-  .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
-  .description("Fetch a YouTube video transcript.")
-  .action(async (videoId: string, _options: unknown, command: Command) => {
+addFieldsOption(
+  program
+    .command("video-enhanced")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .description("Fetch enhanced YouTube video details."),
+).action(async (videoId: string, options: { fields?: string }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/video/${encodeURIComponent(videoId)}/enhanced`,
+    query: { fields: options.fields },
+  });
+  await output(command, value);
+});
+
+addTranscriptOptions(
+  program
+    .command("transcript")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .description("Fetch a YouTube video transcript."),
+).action(async (videoId: string, options: { language?: string; kind?: string }, command: Command) => {
     const value = await request(command, {
       path: `/v1/youtube/video/${encodeURIComponent(videoId)}/transcript/fast`,
+      query: {
+        language: options.language,
+        kind: options.kind,
+      },
     });
     await output(command, value, { defaultFormat: "text", transcriptText: true });
-  });
+  },
+);
 
-addCountOption(
+addTranscriptOptions(
+  program
+    .command("transcript-full")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .description("Fetch a full YouTube video transcript."),
+).action(async (videoId: string, options: { language?: string; kind?: string }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/video/${encodeURIComponent(videoId)}/transcript`,
+    query: {
+      language: options.language,
+      kind: options.kind,
+    },
+  });
+  await output(command, value, { defaultFormat: "text", transcriptText: true });
+});
+
+addContinuationOptions(
+  program
+    .command("related")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .description("Fetch related videos for a YouTube video."),
+).action(async (videoId: string, options: { continuationToken?: string }, command: Command) => {
+  const value = await request(command, {
+    path: `/v1/youtube/video/${encodeURIComponent(videoId)}/related`,
+    query: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addRequiredContinuationOption(
+  program
+    .command("related-page")
+    .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
+    .description("Fetch a related videos continuation page."),
+).action(async (videoId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/video/${encodeURIComponent(videoId)}/related/page`,
+    body: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addCommentSortOption(addCountOption(
   program
     .command("comments")
     .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
     .description("Fetch the first comments page for a video."),
-).action(async (videoId: string, options: { count?: number }, command: Command) => {
+)).action(async (videoId: string, options: { count?: number; sort?: string }, command: Command) => {
   const value = await request(command, {
     path: `/v1/youtube/video/${encodeURIComponent(videoId)}/comments`,
-    query: { count: options.count },
+    query: { count: options.count, sort: options.sort },
   });
   await output(command, value);
 });
@@ -480,7 +573,7 @@ addCountOption(
   },
 );
 
-addCountOption(
+addCommentSortOption(addCountOption(
   program
     .command("replies")
     .argument("<video_id>", "YouTube video ID", (value) => validateNonEmpty(value, "Video ID"))
@@ -488,10 +581,10 @@ addCountOption(
       validateNonEmpty(value, "Comment ID"),
     )
     .description("Fetch the first replies page for a top-level comment."),
-).action(async (videoId: string, commentId: string, options: { count?: number }, command: Command) => {
+)).action(async (videoId: string, commentId: string, options: { count?: number; sort?: string }, command: Command) => {
   const value = await request(command, {
     path: `/v1/youtube/video/${encodeURIComponent(videoId)}/comments/${encodeURIComponent(commentId)}/replies`,
-    query: { count: options.count },
+    query: { count: options.count, sort: options.sort },
   });
   await output(command, value);
 });
@@ -567,6 +660,51 @@ addContinuationOptions(
   await output(command, value);
 });
 
+addRequiredContinuationOption(
+  program
+    .command("channel-videos-page")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch a subsequent videos page for a channel."),
+).action(async (channelId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/videos/page`,
+    body: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+program
+  .command("channel-streams")
+  .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+    validateNonEmpty(value, "Channel ID"),
+  )
+  .description("Fetch live streams for a channel.")
+  .action(async (channelId: string, _options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/streams`,
+    });
+    await output(command, value);
+  });
+
+addRequiredContinuationOption(
+  program
+    .command("channel-streams-page")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch a subsequent streams page for a channel."),
+).action(async (channelId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/streams/page`,
+    body: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
 addContinuationOptions(
   program
     .command("channel-shorts")
@@ -578,6 +716,22 @@ addContinuationOptions(
   const value = await request(command, {
     path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/shorts`,
     query: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addRequiredContinuationOption(
+  program
+    .command("channel-shorts-page")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch a subsequent Shorts page for a channel."),
+).action(async (channelId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/shorts/page`,
+    body: { continuation_token: options.continuationToken },
   });
   await output(command, value);
 });
@@ -597,6 +751,22 @@ addContinuationOptions(
   await output(command, value);
 });
 
+addRequiredContinuationOption(
+  program
+    .command("channel-playlists-page")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch a subsequent playlists page for a channel."),
+).action(async (channelId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/playlists/page`,
+    body: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
 addContinuationOptions(
   program
     .command("channel-community")
@@ -608,6 +778,22 @@ addContinuationOptions(
   const value = await request(command, {
     path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/community`,
     query: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addRequiredContinuationOption(
+  program
+    .command("channel-community-page")
+    .argument("<channel_id>", "UC channel ID, @handle, or username", (value) =>
+      validateNonEmpty(value, "Channel ID"),
+    )
+    .description("Fetch a subsequent community page for a channel."),
+).action(async (channelId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/channel/${encodeURIComponent(channelId)}/community/page`,
+    body: { continuation_token: options.continuationToken },
   });
   await output(command, value);
 });
@@ -624,6 +810,7 @@ addSearchFilterOptions(
     query: string,
     options: {
       continuationToken?: string;
+      channelId?: string;
       uploadDate?: string;
       duration?: string;
       sort?: string;
@@ -639,6 +826,50 @@ addSearchFilterOptions(
       query: {
         query,
         continuation_token: options.continuationToken,
+        channel_id: options.channelId,
+        upload_date: options.uploadDate,
+        duration: options.duration,
+        sort: options.sort,
+        type: options.type,
+        features: options.features,
+        live: options.live,
+        shorts: options.shorts,
+      },
+    });
+    await output(command, value);
+  },
+);
+
+addSearchFilterOptions(
+  addRequiredContinuationOption(
+    program
+      .command("search-page")
+      .argument("<query>", "search query", (value) => validateNonEmpty(value, "Search query"))
+      .description("Fetch a subsequent YouTube search page."),
+  ),
+).action(
+  async (
+    query: string,
+    options: {
+      continuationToken: string;
+      channelId?: string;
+      uploadDate?: string;
+      duration?: string;
+      sort?: string;
+      type?: string;
+      features?: string;
+      live?: boolean;
+      shorts?: boolean;
+    },
+    command: Command,
+  ) => {
+    const value = await request(command, {
+      method: "POST",
+      path: "/v1/youtube/search/page",
+      body: {
+        query,
+        continuation_token: options.continuationToken,
+        channel_id: options.channelId,
         upload_date: options.uploadDate,
         duration: options.duration,
         sort: options.sort,
@@ -663,6 +894,25 @@ addContinuationOptions(
   const value = await request(command, {
     path: "/v1/youtube/search/hashtag",
     query: {
+      hashtag,
+      continuation_token: options.continuationToken,
+    },
+  });
+  await output(command, value);
+});
+
+addRequiredContinuationOption(
+  program
+    .command("hashtag-page")
+    .argument("<hashtag>", "YouTube hashtag, with or without #", (value) =>
+      validateNonEmpty(value, "Hashtag"),
+    )
+    .description("Fetch a subsequent hashtag search page."),
+).action(async (hashtag: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: "/v1/youtube/search/hashtag/page",
+    body: {
       hashtag,
       continuation_token: options.continuationToken,
     },
@@ -707,6 +957,91 @@ addContinuationOptions(
   });
   await output(command, value);
 });
+
+program
+  .command("playlist-metadata")
+  .argument("<playlist_id>", "YouTube playlist ID", (value) => validateNonEmpty(value, "Playlist ID"))
+  .description("Fetch playlist metadata.")
+  .action(async (playlistId: string, _options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: `/v1/youtube/playlist/${encodeURIComponent(playlistId)}/metadata`,
+    });
+    await output(command, value);
+  });
+
+addRequiredContinuationOption(
+  program
+    .command("playlist-page")
+    .argument("<playlist_id>", "YouTube playlist ID", (value) => validateNonEmpty(value, "Playlist ID"))
+    .description("Fetch a subsequent playlist page."),
+).action(async (playlistId: string, options: { continuationToken: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: `/v1/youtube/playlist/${encodeURIComponent(playlistId)}/page`,
+    body: { continuation_token: options.continuationToken },
+  });
+  await output(command, value);
+});
+
+addFieldsOption(
+  program
+    .command("videos-batch")
+    .argument("<ids...>", "YouTube video IDs")
+    .description("Fetch details for multiple videos."),
+).action(async (ids: string[], options: { fields?: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: "/v1/youtube/videos:batch",
+    query: { fields: options.fields },
+    body: { ids: validateIds(ids, "Video ID") },
+  });
+  await output(command, value);
+});
+
+addFieldsOption(
+  program
+    .command("channels-batch")
+    .argument("<ids...>", "YouTube channel IDs, handles, or usernames")
+    .description("Fetch details for multiple channels."),
+).action(async (ids: string[], options: { fields?: string }, command: Command) => {
+  const value = await request(command, {
+    method: "POST",
+    path: "/v1/youtube/channels:batch",
+    query: { fields: options.fields },
+    body: { ids: validateIds(ids, "Channel ID") },
+  });
+  await output(command, value);
+});
+
+program
+  .command("trending")
+  .description("Fetch trending YouTube videos.")
+  .action(async (_options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: "/v1/youtube/trending",
+    });
+    await output(command, value);
+  });
+
+program
+  .command("trending-shorts")
+  .description("Fetch trending YouTube Shorts.")
+  .action(async (_options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: "/v1/youtube/trending/shorts",
+    });
+    await output(command, value);
+  });
+
+program
+  .command("billing-usage")
+  .description("Fetch credit balance and billing usage.")
+  .action(async (_options: unknown, command: Command) => {
+    const value = await request(command, {
+      path: "/v1/billing/usage",
+    });
+    await output(command, value);
+  });
 
 program.parseAsync().catch((error: unknown) => {
   fail(error instanceof Error ? error.message : String(error));
