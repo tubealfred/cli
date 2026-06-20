@@ -89,11 +89,11 @@ tubealfred channel-videos CHANNEL_ID_OR_HANDLE
 tubealfred channel-shorts CHANNEL_ID_OR_HANDLE
 tubealfred channel-playlists CHANNEL_ID_OR_HANDLE
 tubealfred channel-community CHANNEL_ID_OR_HANDLE
-tubealfred search "laravel queues"
-tubealfred search "laravel queues" --upload-date month --duration three_to_twenty_mins --sort popularity --type video
+tubealfred search "how to learn faster"
+tubealfred search "how to learn faster" --upload-date month --duration three_to_twenty_mins --sort popularity --type video
 tubealfred search "live coding" --live
-tubealfred hashtag "#laravel"
-tubealfred suggestions "laravel"
+tubealfred hashtag "#howto"
+tubealfred suggestions "how to"
 tubealfred playlist PLAYLIST_ID
 tubealfred resolve "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 tubealfred billing-usage

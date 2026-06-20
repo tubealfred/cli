@@ -109,7 +109,7 @@ test("supports new channel, hashtag, replies, and resolve API paths", async () =
       ["--api-url", server.url, "channel-shorts", "@mkbhd", "--continuation-token", "NEXT"],
       ["--api-url", server.url, "channel-playlists", "@mkbhd"],
       ["--api-url", server.url, "channel-community", "@mkbhd"],
-      ["--api-url", server.url, "hashtag", "#laravel", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "hashtag", "#howto", "--continuation-token", "NEXT"],
       ["--api-url", server.url, "replies", "video123", "comment123", "--count", "25"],
       ["--api-url", server.url, "resolve", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
     ];
@@ -124,7 +124,7 @@ test("supports new channel, hashtag, replies, and resolve API paths", async () =
       "/v1/youtube/channel/%40mkbhd/shorts?continuation_token=NEXT",
       "/v1/youtube/channel/%40mkbhd/playlists",
       "/v1/youtube/channel/%40mkbhd/community",
-      "/v1/youtube/search/hashtag?hashtag=%23laravel&continuation_token=NEXT",
+      "/v1/youtube/search/hashtag?hashtag=%23howto&continuation_token=NEXT",
       "/v1/youtube/video/video123/comments/comment123/replies?count=25",
       "/v1/youtube/utility/resolve?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ",
     ]);
@@ -159,8 +159,8 @@ test("supports newly documented page, related, batch, utility, and trending path
       ["--api-url", server.url, "channel-shorts-page", "@mkbhd", "--continuation-token", "NEXT"],
       ["--api-url", server.url, "channel-playlists-page", "@mkbhd", "--continuation-token", "NEXT"],
       ["--api-url", server.url, "channel-community-page", "@mkbhd", "--continuation-token", "NEXT"],
-      ["--api-url", server.url, "search-page", "laravel", "--continuation-token", "NEXT", "--channel-id", "@tubealfred"],
-      ["--api-url", server.url, "hashtag-page", "#laravel", "--continuation-token", "NEXT"],
+      ["--api-url", server.url, "search-page", "how to", "--continuation-token", "NEXT", "--channel-id", "@tubealfred"],
+      ["--api-url", server.url, "hashtag-page", "#howto", "--continuation-token", "NEXT"],
       ["--api-url", server.url, "playlist-metadata", "PL123"],
       ["--api-url", server.url, "playlist-page", "PL123", "--continuation-token", "NEXT"],
       ["--api-url", server.url, "videos-batch", "dQw4w9WgXcQ", "--fields", "id,title"],
@@ -198,7 +198,7 @@ test("supports newly documented page, related, batch, utility, and trending path
       ],
     );
     assert.deepEqual(seen[3].body, { continuation_token: "NEXT" });
-    assert.deepEqual(seen[10].body, { query: "laravel", continuation_token: "NEXT", channel_id: "@tubealfred" });
+    assert.deepEqual(seen[10].body, { query: "how to", continuation_token: "NEXT", channel_id: "@tubealfred" });
     assert.deepEqual(seen[14].body, { ids: ["dQw4w9WgXcQ"] });
   } finally {
     await server.close();
@@ -237,7 +237,7 @@ test("forwards search filters and boolean flags", async () => {
       "--api-url",
       server.url,
       "search",
-      "laravel tutorial",
+      "how to learn faster",
       "--upload-date",
       "month",
       "--duration",
@@ -255,7 +255,7 @@ test("forwards search filters and boolean flags", async () => {
 
     const parsed = new URL(seenUrl, "http://localhost");
     assert.equal(parsed.pathname, "/v1/youtube/search/");
-    assert.equal(parsed.searchParams.get("query"), "laravel tutorial");
+    assert.equal(parsed.searchParams.get("query"), "how to learn faster");
     assert.equal(parsed.searchParams.get("upload_date"), "month");
     assert.equal(parsed.searchParams.get("duration"), "three_to_twenty_mins");
     assert.equal(parsed.searchParams.get("sort"), "popularity");
@@ -269,7 +269,7 @@ test("forwards search filters and boolean flags", async () => {
 });
 
 test("rejects invalid search filter values", async () => {
-  const result = await runCli(["search", "laravel", "--upload-date", "decade"]);
+  const result = await runCli(["search", "how to", "--upload-date", "decade"]);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /Upload date must be one of/);
 });
