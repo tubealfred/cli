@@ -69,7 +69,7 @@ test("prints command help", async () => {
 
   assert.equal(result.code, 0);
   assert.match(result.stdout, /Usage: tubealfred/);
-  assert.match(result.stdout, /video <video_id>/);
+  assert.match(result.stdout, /video \[options\] <video_id>/);
   assert.match(result.stdout, /channel-shorts \[options\] <channel_id>/);
   assert.match(result.stdout, /hashtag \[options\] <hashtag>/);
   assert.match(result.stdout, /resolve <url>/);

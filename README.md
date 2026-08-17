@@ -190,6 +190,8 @@ pnpm test
 pnpm build
 ```
 
+YouTube commands, routes, parameters, and validation are generated from the versioned TubeAlfred operation manifest. Refresh the vendored contract with `pnpm contract:sync`; `pnpm contract:check` fails when generated runtime metadata drifts.
+
 ## License
 
 MIT
