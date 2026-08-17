@@ -15,7 +15,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "pnpm contract:check && tsup",
+    "contract:sync": "node scripts/sync-contract.mjs",
+    "contract:check": "node scripts/sync-contract.mjs --check --source contracts/tubealfred-youtube-operations.v1.json",
     "dev": "tsup --watch",
     "test": "pnpm build && node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
@@ -46,6 +48,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
+    "postcss": "^8.5.18",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0"
   },
