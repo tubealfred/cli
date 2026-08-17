@@ -24,7 +24,7 @@ const sourceText = source.startsWith("http://") || source.startsWith("https://")
   : await readFile(resolve(source), "utf8");
 const manifest = JSON.parse(sourceText);
 
-if (manifest.schema_version !== 1 || manifest.manifest_version !== "1.0.0") {
+if (manifest.schema_version !== 1 || manifest.manifest_version !== "1.1.0") {
   throw new Error("unsupported TubeAlfred operation manifest version");
 }
 if (!Array.isArray(manifest.operations) || manifest.operation_count !== manifest.operations.length) {
