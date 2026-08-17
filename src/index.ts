@@ -5,7 +5,7 @@ import { Command, InvalidArgumentError } from "commander";
 
 const PRODUCT_NAME = "TubeAlfred CLI";
 const DEFAULT_API_URL = "https://api.tubealfred.com";
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 35_000;
 const DEFAULT_RETRIES = 1;
 const MIN_COUNT = 1;
 const MAX_COUNT = 100;

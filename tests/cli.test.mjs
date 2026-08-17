@@ -74,6 +74,7 @@ test("prints command help", async () => {
   assert.match(result.stdout, /hashtag \[options\] <hashtag>/);
   assert.match(result.stdout, /resolve <url>/);
   assert.match(result.stdout, /billing-usage/);
+  assert.match(result.stdout, /request timeout in milliseconds \(default: 35000\)/);
 });
 
 test("uses /v1 API paths without duplicating /api", async () => {
