@@ -4,6 +4,10 @@ Command-line access to the [TubeAlfred API](https://tubealfred.com/docs).
 
 Use it to fetch YouTube video, transcript, comment, reply, channel, Shorts, playlist, community, search, hashtag, suggestion, and URL resolution data, plus account billing usage, from your terminal through your TubeAlfred account.
 
+## Credits
+
+Free accounts start with 50 credits. The free allowance resets to 50 each month on your signup anniversary; unused free credits do not roll over. Resets affect only the free allowance. No credit card required. See the [current pricing and credits](https://tubealfred.com/pricing.md) for plan and usage details.
+
 ## Requirements
 
 - Node.js 18 or newer.

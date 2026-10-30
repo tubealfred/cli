@@ -518,6 +518,7 @@ function addManifestCommand(program: Command, operation: ManifestOperation): voi
 const program = new Command()
   .name("tubealfred")
   .description("TubeAlfred command-line tools for YouTube data and account usage.")
+  .addHelpText("after", "\nFree accounts start with 50 credits and reset to 50 each month on their signup anniversary.\nUnused free credits do not roll over. Resets affect only the free allowance.\nCheck your balance with tubealfred billing-usage. Pricing: https://tubealfred.com/pricing.md\n")
   .version(packageVersion())
   .option("--api-key <key>", "TubeAlfred API key. Prefer TUBEALFRED_API_KEY for shell safety.")
   .option("--api-url <url>", "TubeAlfred API base URL.", DEFAULT_API_URL)
