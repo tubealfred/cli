@@ -75,6 +75,8 @@ test("prints command help", async () => {
   assert.match(result.stdout, /resolve <url>/);
   assert.match(result.stdout, /billing-usage/);
   assert.match(result.stdout, /request timeout in milliseconds \(default: 35000\)/);
+  assert.match(result.stdout, /reset to 50 each month on their signup anniversary/);
+  assert.match(result.stdout, /Unused free credits do not roll over/);
 });
 
 test("uses /v1 API paths without duplicating /api", async () => {
